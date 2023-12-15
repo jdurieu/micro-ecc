@@ -16,8 +16,9 @@ Possible values for uECC_PLATFORM are defined below: */
 #define uECC_arm_thumb2 5
 #define uECC_arm64      6
 #define uECC_avr        7
+#define uECC_msp430 8
 
-/* If desired, you can define uECC_WORD_SIZE as appropriate for your platform (1, 4, or 8 bytes).
+/* If desired, you can define uECC_WORD_SIZE as appropriate for your platform (1, 2, 4, or 8 bytes).
 If uECC_WORD_SIZE is not explicitly defined then it will be automatically set based on your
 platform. */
 

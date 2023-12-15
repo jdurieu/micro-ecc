@@ -21,6 +21,17 @@
     0x##a, 0x##b, 0x##c, 0x##d, 0x##e, 0x##f, 0x##g, 0x##h
 #define BYTES_TO_WORDS_4(a, b, c, d) 0x##a, 0x##b, 0x##c, 0x##d
 
+#elif (uECC_WORD_SIZE == 2)
+
+#define num_words_secp160r1 10
+#define num_words_secp192r1 12
+#define num_words_secp224r1 14
+#define num_words_secp256r1 16
+#define num_words_secp256k1 16
+
+#define BYTES_TO_WORDS_8(a, b, c, d, e, f, g, h) 0x##b##a, 0x##d##c, 0x##f##e, 0x##h##g
+#define BYTES_TO_WORDS_4(a, b, c, d) 0x##b##a, 0x##d##c
+
 #elif (uECC_WORD_SIZE == 4)
 
 #define num_words_secp160r1 5
@@ -253,6 +264,24 @@ static void omega_mult_secp160r1(uint8_t *result, const uint8_t *right) {
         carry = sum >> 8;
     }
 }
+#elif uECC_WORD_SIZE == 2
+static void omega_mult_secp160r1(uint16_t *result, const uint16_t *right) {
+    uint16_t carry;
+    unsigned i;
+
+        /* Multiply by (2^31 + 1). */
+        //  to skip 32 bits = +2 (as 2 words * 16 bits/word = 32 bits) 
+    uECC_vli_set(result + 2, right, num_words_secp160r1); /* 2^32 */
+    uECC_vli_rshift1(result + 2, num_words_secp160r1); /* 2^31 */
+    result[0] = right[0] << 15; /* get last bit from shift */
+    
+    carry = uECC_vli_add(result, result, right, num_words_secp160r1); /* 2^31 + 1 */
+    for (i = num_words_secp160r1; carry; ++i) {
+        uint32_t sum = (uint32_t)result[i] + carry;
+        result[i] = (uint16_t)sum;
+        carry = sum >> 16;
+    }
+}
 #elif uECC_WORD_SIZE == 4
 static void omega_mult_secp160r1(uint32_t *result, const uint32_t *right) {
     uint32_t carry;
@@ -344,6 +373,49 @@ static void vli_mmod_fast_secp192r1(uint8_t *result, uint8_t *product) {
     tmp[16] = tmp[17] = tmp[18] = tmp[19] = tmp[20] = tmp[21] = tmp[22] = tmp[23] = 0;
     carry += uECC_vli_add(result, result, tmp, num_words_secp192r1);
     
+    while (carry || uECC_vli_cmp_unsafe(curve_secp192r1.p, result, num_words_secp192r1) != 1) {
+        carry -= uECC_vli_sub(result, result, curve_secp192r1.p, num_words_secp192r1);
+    }
+}
+#elif uECC_WORD_SIZE == 2
+static void vli_mmod_fast_secp192r1(uint16_t *result, uint16_t *product) {
+    uint16_t tmp[num_words_secp192r1];
+    int carry;
+
+    uECC_vli_set(result, product, num_words_secp192r1);
+
+    uECC_vli_set(tmp, &product[12], num_words_secp192r1);
+    carry = uECC_vli_add(result, result, tmp, num_words_secp192r1);
+
+    // Clear the temp array
+    uECC_vli_clear(tmp, num_words_secp192r1);
+
+    // Setting the higher words of tmp from the corresponding parts of the product
+    // Zero out the first 16 words (32 bytes in 8-bit terms) of 'tmp'
+    tmp[0] = tmp[1] = tmp[2] = tmp[3] = tmp[4] = tmp[5] = tmp[6] = tmp[7] = 0;
+    tmp[8] = tmp[9] = tmp[10] = tmp[11] = tmp[12] = tmp[13] = tmp[14] = tmp[15] = 0;
+
+    // Copy the next 24 bytes of product into tmp at the correct 16-bit offsets
+    tmp[8] = product[12]; tmp[9] = product[13]; tmp[10] = product[14]; tmp[11] = product[15];
+    tmp[12] = product[16]; tmp[13] = product[17]; tmp[14] = product[18]; tmp[15] = product[19];
+    tmp[16] = product[20]; tmp[17] = product[21]; tmp[18] = product[22]; tmp[19] = product[23];
+    carry += uECC_vli_add(result, result, tmp, num_words_secp192r1);
+
+    // Setting up tmp for the next operation
+    tmp[0] = tmp[8] = product[20];
+    tmp[1] = tmp[9] = product[21];
+    tmp[2] = tmp[10] = product[22];
+    tmp[3] = tmp[11] = product[23];
+    tmp[4] = tmp[12] = product[24];
+    tmp[5] = tmp[13] = product[25];
+    tmp[6] = tmp[14] = product[26];
+    tmp[7] = tmp[15] = product[27];
+    tmp[16] = tmp[17] = tmp[18] = tmp[19] = 0;
+
+    carry += uECC_vli_add(result, result, tmp, num_words_secp192r1);
+
+
+    // Adjusting the result to be within the curve order
     while (carry || uECC_vli_cmp_unsafe(curve_secp192r1.p, result, num_words_secp192r1) != 1) {
         carry -= uECC_vli_sub(result, result, curve_secp192r1.p, num_words_secp192r1);
     }
@@ -625,6 +697,62 @@ static void vli_mmod_fast_secp224r1(uint8_t *result, uint8_t *product) {
         }
     }
 }
+#elif uECC_WORD_SIZE == 2
+static void vli_mmod_fast_secp224r1(uint16_t *result, uint16_t *product) {
+    uint16_t tmp[num_words_secp224r1];
+    int8_t carry;
+
+    /* t */
+    uECC_vli_set(result, product, num_words_secp224r1);
+
+    /* s1 */
+    tmp[0] = tmp[1] = tmp[2] = tmp[3] = 0;
+    tmp[4] = tmp[5] = tmp[6] = tmp[7] = 0;
+    tmp[8] = tmp[9] = tmp[10] = tmp[11] = 0;
+    tmp[12] = product[14]; tmp[13] = product[15]; tmp[14] = product[16]; tmp[15] = product[17];
+    tmp[16] = product[18]; tmp[17] = product[19]; tmp[18] = product[20]; tmp[19] = product[21];
+    tmp[20] = product[22]; tmp[21] = product[23]; tmp[22] = product[24]; tmp[23] = product[25];
+    tmp[24] = product[26]; tmp[25] = product[27]; tmp[26] = product[28]; tmp[27] = product[29];
+    carry = uECC_vli_add(result, result, tmp, num_words_secp224r1);
+
+    /* s2 */
+    tmp[12] = product[22]; tmp[13] = product[23]; tmp[14] = product[24]; tmp[15] = product[25];
+    tmp[16] = product[26]; tmp[17] = product[27]; tmp[18] = product[28]; tmp[19] = product[29];
+    tmp[20] = product[30]; tmp[21] = product[31]; tmp[22] = product[32]; tmp[23] = product[33];
+    tmp[24] = tmp[25] = tmp[26] = tmp[27] = 0;
+    carry += uECC_vli_add(result, result, tmp, num_words_secp224r1);
+
+    /* d1 */
+    tmp[0]  = product[14]; tmp[1]  = product[15]; tmp[2]  = product[16]; tmp[3]  = product[17];
+    tmp[4]  = product[18]; tmp[5]  = product[19]; tmp[6]  = product[20]; tmp[7]  = product[21];
+    tmp[8]  = product[22]; tmp[9]  = product[23]; tmp[10] = product[24]; tmp[11] = product[25];
+    tmp[12] = product[26]; tmp[13] = product[27]; tmp[14] = product[28]; tmp[15] = product[29];
+    tmp[16] = product[30]; tmp[17] = product[31]; tmp[18] = product[32]; tmp[19] = product[33];
+    tmp[20] = product[34]; tmp[21] = product[35]; tmp[22] = product[36]; tmp[23] = product[37];
+    tmp[24] = product[38]; tmp[25] = product[39]; tmp[26] = product[40]; tmp[27] = product[41];
+    carry -= uECC_vli_sub(result, result, tmp, num_words_secp224r1);
+
+    /* d2 */
+    tmp[0]  = product[22]; tmp[1]  = product[23]; tmp[2]  = product[24]; tmp[3]  = product[25];
+    tmp[4]  = product[26]; tmp[5]  = product[27]; tmp[6]  = product[28]; tmp[7]  = product[29];
+    tmp[8]  = product[30]; tmp[9]  = product[31]; tmp[10] = product[32]; tmp[11] = product[33];
+    tmp[12] = tmp[13] = tmp[14] = tmp[15] = 0;
+    tmp[16] = tmp[17] = tmp[18] = tmp[19] = 0;
+    tmp[20] = tmp[21] = tmp[22] = tmp[23] = 0;
+    tmp[24] = tmp[25] = tmp[26] = tmp[27] = 0;
+    carry -= uECC_vli_sub(result, result, tmp, num_words_secp224r1);
+
+    /* Adjusting for carry and modular reduction */
+    if (carry < 0) {
+        do {
+            carry += uECC_vli_add(result, result, curve_secp224r1.p, num_words_secp224r1);
+        } while (carry < 0);
+    } else {
+        while (carry || uECC_vli_cmp_unsafe(curve_secp224r1.p, result, num_words_secp224r1) != 1) {
+            carry -= uECC_vli_sub(result, result, curve_secp224r1.p, num_words_secp224r1);
+        }
+    }
+}
 #elif uECC_WORD_SIZE == 4
 static void vli_mmod_fast_secp224r1(uint32_t *result, uint32_t *product)
 {
@@ -868,6 +996,107 @@ static void vli_mmod_fast_secp256r1(uint8_t *result, uint8_t *product) {
     tmp[24] = tmp[25] = tmp[26] = tmp[27] = 0;
     tmp[28] = product[52]; tmp[29] = product[53]; tmp[30] = product[54]; tmp[31] = product[55];
     carry -= uECC_vli_sub(result, result, tmp, num_words_secp256r1);
+    
+    if (carry < 0) {
+        do {
+            carry += uECC_vli_add(result, result, curve_secp256r1.p, num_words_secp256r1);
+        } while (carry < 0);
+    } else {
+        while (carry || uECC_vli_cmp_unsafe(curve_secp256r1.p, result, num_words_secp256r1) != 1) {
+            carry -= uECC_vli_sub(result, result, curve_secp256r1.p, num_words_secp256r1);
+        }
+    }
+}
+#elif uECC_WORD_SIZE == 2
+static void vli_mmod_fast_secp256r1(uint16_t *result, uint16_t *product) {
+    uint16_t tmp[num_words_secp256r1];
+    int8_t carry;
+
+    /* t */
+    uECC_vli_set(result, product, num_words_secp256r1);
+
+    /* s1 */
+    tmp[0] = tmp[1] = tmp[2] = tmp[3] = 0;
+    tmp[4] = tmp[5] = tmp[6] = tmp[7] = 0;
+    tmp[8] = tmp[9] = tmp[10] = tmp[11] = 0;
+    tmp[12] = product[22]; tmp[13] = product[23]; tmp[14] = product[24]; tmp[15] = product[25];
+    tmp[16] = product[26]; tmp[17] = product[27]; tmp[18] = product[28]; tmp[19] = product[29];
+    tmp[20] = product[30]; tmp[21] = product[31]; tmp[22] = product[32]; tmp[23] = product[33];
+    tmp[24] = product[34]; tmp[25] = product[35]; tmp[26] = product[36]; tmp[27] = product[37];
+    tmp[28] = product[38]; tmp[29] = product[39]; tmp[30] = product[40]; tmp[31] = product[41];
+    carry = uECC_vli_add(tmp, tmp, tmp, num_words_secp256r1);
+    carry += uECC_vli_add(result, result, tmp, num_words_secp256r1);
+
+    /* s2 */
+    tmp[12] = product[24]; tmp[13] = product[25]; tmp[14] = product[26]; tmp[15] = product[27];
+    tmp[16] = product[28]; tmp[17] = product[29]; tmp[18] = product[30]; tmp[19] = product[31];
+    tmp[20] = product[32]; tmp[21] = product[33]; tmp[22] = product[34]; tmp[23] = product[35];
+    tmp[24] = product[36]; tmp[25] = product[37]; tmp[26] = product[38]; tmp[27] = product[39];
+    tmp[28] = tmp[29] = tmp[30] = tmp[31] = 0;
+    carry += uECC_vli_add(tmp, tmp, tmp, num_words_secp256r1);
+    carry += uECC_vli_add(result, result, tmp, num_words_secp256r1);
+
+    /* s3 */
+    tmp[0] = product[16]; tmp[1] = product[17]; tmp[2] = product[18]; tmp[3] = product[19];
+    tmp[4] = product[20]; tmp[5] = product[21]; tmp[6] = product[22]; tmp[7] = product[23];
+    tmp[8] = product[24]; tmp[9] = product[25]; tmp[10] = product[26]; tmp[11] = product[27];
+    tmp[12] = tmp[13] = tmp[14] = tmp[15] = 0;
+    tmp[16] = tmp[17] = tmp[18] = tmp[19] = 0;
+    tmp[20] = tmp[21] = tmp[22] = tmp[23] = 0;
+    tmp[24] = product[34]; tmp[25] = product[35]; tmp[26] = product[36]; tmp[27] = product[37];
+    tmp[28] = product[38]; tmp[29] = product[39]; tmp[30] = product[40]; tmp[31] = product[41];
+    carry += uECC_vli_add(result, result, tmp, num_words_secp256r1);
+
+    /* s4 */
+    tmp[0] = product[18]; tmp[1] = product[19]; tmp[2] = product[20]; tmp[3] = product[21];
+    tmp[4] = product[22]; tmp[5] = product[23]; tmp[6] = product[24]; tmp[7] = product[25];
+    tmp[8] = product[26]; tmp[9] = product[27]; tmp[10] = product[28]; tmp[11] = product[29];
+    tmp[12] = product[32]; tmp[13] = product[33]; tmp[14] = product[34]; tmp[15] = product[35];
+    tmp[16] = product[36]; tmp[17] = product[37]; tmp[18] = product[38]; tmp[19] = product[39];
+    tmp[20] = product[40]; tmp[21] = product[41]; tmp[22] = product[42]; tmp[23] = product[43];
+    tmp[24] = product[32]; tmp[25] = product[33]; tmp[26] = product[34]; tmp[27] = product[35];
+    tmp[28] = product[16]; tmp[29] = product[17]; tmp[30] = product[18]; tmp[31] = product[19];
+    carry += uECC_vli_add(result, result, tmp, num_words_secp256r1);
+
+    /* d1 */
+    tmp[0] = product[22]; tmp[1] = product[23]; tmp[2] = product[24]; tmp[3] = product[25];
+    tmp[4] = product[26]; tmp[5] = product[27]; tmp[6] = product[28]; tmp[7] = product[29];
+    tmp[8] = product[30]; tmp[9] = product[31]; tmp[10] = product[32]; tmp[11] = product[33];
+    tmp[12] = tmp[13] = tmp[14] = tmp[15] = 0;
+    tmp[16] = tmp[17] = tmp[18] = tmp[19] = 0;
+    tmp[20] = tmp[21] = tmp[22] = tmp[23] = 0;
+    tmp[24] = product[16]; tmp[25] = product[17]; tmp[26] = product[18]; tmp[27] = product[19];
+    tmp[28] = product[20]; tmp[29] = product[21]; tmp[30] = product[22]; tmp[31] = product[23];
+    carry -= uECC_vli_sub(result, result, tmp, num_words_secp256r1);
+
+    /* d2 */
+    tmp[0] = product[24]; tmp[1] = product[25]; tmp[2] = product[26]; tmp[3] = product[27];
+    tmp[4] = product[28]; tmp[5] = product[29]; tmp[6] = product[30]; tmp[7] = product[31];
+    tmp[8] = product[32]; tmp[9] = product[33]; tmp[10] = product[34]; tmp[11] = product[35];
+    tmp[12] = product[36]; tmp[13] = product[37]; tmp[14] = product[38]; tmp[15] = product[39];
+    tmp[16] = tmp[17] = tmp[18] = tmp[19] = 0;
+    tmp[20] = tmp[21] = tmp[22] = tmp[23] = 0;
+    tmp[24] = product[18]; tmp[25] = product[19]; tmp[26] = product[20]; tmp[27] = product[21];
+    tmp[28] = product[22]; tmp[29] = product[23]; tmp[30] = product[24]; tmp[31] = product[25];
+    carry -= uECC_vli_sub(result, result, tmp, num_words_secp256r1);
+
+    /* d3 */
+    tmp[0] = product[26]; tmp[1] = product[27]; tmp[2] = product[28]; tmp[3] = product[29];
+    tmp[4] = product[30]; tmp[5] = product[31]; 
+    tmp[6] = product[16]; tmp[7] = product[17]; tmp[8] = product[18]; tmp[9] = product[19];
+    tmp[10] = product[20]; tmp[11] = product[21]; 
+    tmp[12] = 0; tmp[13] = 0;
+    tmp[14] = product[24]; tmp[15] = product[25];
+    carry -= uECC_vli_sub(result, result, tmp, num_words_secp256r1 / 2);
+
+    /* d4 */
+    tmp[0] = product[28]; tmp[1] = product[29]; tmp[2] = product[30]; tmp[3] = product[31];
+    tmp[4] = 0; tmp[5] = 0;
+    tmp[6] = product[18]; tmp[7] = product[19]; tmp[8] = product[20]; tmp[9] = product[21];
+    tmp[10] = product[22]; tmp[11] = product[23]; 
+    tmp[12] = 0; tmp[13] = 0;
+    tmp[14] = product[26]; tmp[15] = product[27];
+    carry -= uECC_vli_sub(result, result, tmp, num_words_secp256r1 / 2);
     
     if (carry < 0) {
         do {
@@ -1206,6 +1435,40 @@ static void omega_mult_secp256k1(uint8_t * result, const uint8_t * right) {
     /* add the 2^32 multiple */
     result[4 + num_words_secp256k1] =
         uECC_vli_add(result + 4, result + 4, right, num_words_secp256k1); 
+}
+#elif uECC_WORD_SIZE == 2
+static void omega_mult_secp256k1(uint16_t * result, const uint16_t * right) {
+    /* Multiply by (2^32 + 2^9 + 2^8 + 2^7 + 2^6 + 2^4 + 1). */
+    uECC_word_t r0 = 0;
+    uECC_word_t r1 = 0;
+    uECC_word_t r2 = 0;
+    wordcount_t k;
+
+    /* Adjusted for 16-bit word size */
+    wordcount_t half_num_words = num_words_secp256k1 / 2;
+
+    /* Multiply by (2^9 + 2^8 + 2^7 + 2^6 + 2^4 + 1). */
+    muladd(0xD1, right[0], &r0, &r1, &r2);
+    result[0] = r0;
+    r0 = r1;
+    r1 = r2;
+    /* r2 is still 0 */
+
+    for (k = 1; k < half_num_words; ++k) {
+        muladd(0x03, right[k - 1], &r0, &r1, &r2);
+        muladd(0xD1, right[k], &r0, &r1, &r2);
+        result[k] = r0;
+        r0 = r1;
+        r1 = r2;
+        r2 = 0;
+    }
+    muladd(0x03, right[half_num_words - 1], &r0, &r1, &r2);
+    result[half_num_words] = r0;
+    result[half_num_words + 1] = r1;
+
+    /* add the 2^32 multiple */
+    result[2 + half_num_words] = 
+        uECC_vli_add(result + 2, result + 2, right, half_num_words); 
 }
 #elif uECC_WORD_SIZE == 4
 static void omega_mult_secp256k1(uint32_t * result, const uint32_t * right) {

@@ -104,6 +104,22 @@
         #undef uECC_MAX_WORDS
         #define uECC_MAX_WORDS 32
     #endif
+#elif (uECC_WORD_SIZE == 2)
+    #if uECC_SUPPORTS_secp160r1
+        #define uECC_MAX_WORDS 11 /* Due to the size of curve_n. */
+    #endif
+    #if uECC_SUPPORTS_secp192r1
+        #undef uECC_MAX_WORDS
+        #define uECC_MAX_WORDS 12
+    #endif
+    #if uECC_SUPPORTS_secp224r1
+        #undef uECC_MAX_WORDS
+        #define uECC_MAX_WORDS 14
+    #endif
+    #if (uECC_SUPPORTS_secp256r1 || uECC_SUPPORTS_secp256k1)
+        #undef uECC_MAX_WORDS
+        #define uECC_MAX_WORDS 16
+    #endif
 #elif (uECC_WORD_SIZE == 4)
     #if uECC_SUPPORTS_secp160r1
         #define uECC_MAX_WORDS 6 /* Due to the size of curve_n. */

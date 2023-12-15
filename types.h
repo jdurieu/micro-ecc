@@ -18,6 +18,8 @@
         #define uECC_PLATFORM uECC_x86
     #elif defined(__amd64__) || defined(_M_X64)
         #define uECC_PLATFORM uECC_x86_64
+    #elif defined(__msp430__)
+        #define uECC_PLATFORM uECC_msp430
     #else
         #define uECC_PLATFORM uECC_arch_other
     #endif
@@ -36,6 +38,8 @@
 #ifndef uECC_WORD_SIZE
     #if uECC_PLATFORM == uECC_avr
         #define uECC_WORD_SIZE 1
+    #elif (uECC_PLATFORM == uECC_msp430)
+        #define uECC_WORD_SIZE 2
     #elif (uECC_PLATFORM == uECC_x86_64 || uECC_PLATFORM == uECC_arm64)
         #define uECC_WORD_SIZE 8
     #else
@@ -43,7 +47,7 @@
     #endif
 #endif
 
-#if (uECC_WORD_SIZE != 1) && (uECC_WORD_SIZE != 4) && (uECC_WORD_SIZE != 8)
+#if (uECC_WORD_SIZE != 1) && (uECC_WORD_SIZE != 2) && (uECC_WORD_SIZE != 4) && (uECC_WORD_SIZE != 8)
     #error "Unsupported value for uECC_WORD_SIZE"
 #endif
 
@@ -80,6 +84,16 @@ typedef uint16_t uECC_dword_t;
 #define uECC_WORD_BITS 8
 #define uECC_WORD_BITS_SHIFT 3
 #define uECC_WORD_BITS_MASK 0x07
+
+#elif (uECC_WORD_SIZE == 2)
+
+typedef uint16_t uECC_word_t;
+typedef uint32_t uECC_dword_t;
+
+#define HIGH_BIT_SET 0x8000
+#define uECC_WORD_BITS 16
+#define uECC_WORD_BITS_SHIFT 4
+#define uECC_WORD_BITS_MASK 0x0F
 
 #elif (uECC_WORD_SIZE == 4)
 
